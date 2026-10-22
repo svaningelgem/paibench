@@ -1,0 +1,126 @@
+"""Score saved model answers.
+
+Layout: <dir>/<model>/<task>_<run>.<ext>, e.g. answers/model-a/calc_3.md
+Usage:  python3 score.py answers [-v]
+"""
+
+import builtins
+import contextlib
+import io
+import json
+import re
+import runpy
+import subprocess
+import sys
+from collections import defaultdict
+from pathlib import Path
+from statistics import mean
+
+HERE = Path(__file__).resolve().parent
+TASKS = sorted(p.stem for p in (HERE / "cases").glob("*.py"))
+TIMEOUT = 10
+
+
+def extract_code(text: str) -> str:
+    blocks = re.findall(r"```[\w+-]*\n(.*?)```", text, re.DOTALL)
+    return max(blocks, key=len) if blocks else text
+
+
+def is_exc(want: object) -> bool:
+    return isinstance(want, type) and issubclass(want, BaseException)
+
+
+def same(got: object, want: object) -> bool:
+    if isinstance(want, int | float) and isinstance(got, int | float):
+        return abs(got - want) <= 1e-9 * max(1, abs(want))
+    return got == want
+
+
+def child(task: str, answer: Path) -> None:
+    cases = runpy.run_path(str(HERE / "cases" / f"{task}.py"))["CASES"]
+    # eval/exec blocked so calc can't cheat; ast-walking still slips through
+    safe = {k: v for k, v in vars(builtins).items() if k not in ("eval", "exec")}
+    ns = {"__name__": "answer", "__builtins__": safe}
+    failed = []
+    with contextlib.redirect_stdout(io.StringIO()):
+        try:
+            exec(extract_code(answer.read_text()), ns)  # noqa: S102
+        except BaseException as e:  # noqa: BLE001
+            print(
+                json.dumps({"score": 0, "failed": [f"<load error> {e!r}"]}),
+                file=sys.__stdout__,
+            )
+            return
+        for expr, want in cases:
+            try:
+                got = eval(expr, ns)
+                ok, detail = not is_exc(want) and same(got, want), repr(got)
+            except Exception as e:  # noqa: BLE001
+                ok, detail = (
+                    is_exc(want) and isinstance(e, want),
+                    f"{type(e).__name__}: {e}",
+                )
+            if not ok:
+                failed.append(
+                    f"{expr} -> {detail}, want {getattr(want, '__name__', repr(want))}"
+                )
+    print(json.dumps({"score": 1 - len(failed) / len(cases), "failed": failed}))
+
+
+def score(task: str, answer: Path) -> dict:
+    try:
+        out = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                str(HERE / "score.py"),
+                "--child",
+                task,
+                str(answer),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            stdin=subprocess.DEVNULL,
+        )
+        return json.loads(out.stdout.splitlines()[-1])
+    except (subprocess.TimeoutExpired, IndexError, json.JSONDecodeError):
+        return {"score": 0, "failed": ["<timeout or crash>"]}
+
+
+def main() -> None:
+    if sys.argv[1] == "--child":
+        child(sys.argv[2], Path(sys.argv[3]))
+        return
+    runs = defaultdict(list)
+    for answer in sorted(Path(sys.argv[1]).glob("*/*_*")):
+        task = answer.stem.rsplit("_", 1)[0]
+        if task not in TASKS:
+            continue
+        result = score(task, answer)
+        runs[answer.parent.name, task].append(result["score"])
+        if "-v" in sys.argv and result["failed"]:
+            print(f"{answer}:", *result["failed"], sep="\n  ")
+
+    print(f"\n{'model':<16}" + "".join(f"{t:>14}" for t in TASKS) + f"{'overall':>10}")
+    for model in sorted({m for m, _ in runs}):
+        cells, means = [], []
+        for task in TASKS:
+            if scores := runs.get((model, task)):
+                means.append(mean(scores))
+                cells.append(
+                    f"{means[-1]:.0%} {sum(s == 1 for s in scores)}/{len(scores)}"
+                )
+            else:
+                cells.append("-")
+        print(
+            f"{model:<16}"
+            + "".join(f"{c:>14}" for c in cells)
+            + f"{mean(means):>10.0%}"
+        )
+    print("\ncell = avg share of test cases passed, then fully-correct runs / runs")
+
+
+if __name__ == "__main__":
+    main()
