@@ -45,29 +45,31 @@ Agents such as IBM Bob or OpenCode take the same tasks, with two extra rules:
 
 ### From the command line
 
-Both tools have a one-shot mode with a fresh session per call, so all 20 runs can be scripted. Run this from
-the repo root, with the `agent` line for your tool:
+Both tools have a one-shot mode with a fresh session per call, so the runs can be scripted. `run.sh` sends
+every task to an agent command, each call in its own empty temp folder:
 
 ```bash
-agent() { bob --hide-intermediary-output -p "$1"; }      # Bob Shell
-# agent() { opencode run -m <provider>/<model> "$1"; }   # OpenCode
-name=bob
+./run.sh <name> <agent command...>   # the prompt is added as the last argument
+```
 
-repo=$PWD
-mkdir -p "answers/$name"
-for run in 1 2 3 4 5; do
-  for task in duration bugfix calc semver; do
-    (cd "$(mktemp -d)" && agent "$(cat "$repo/tasks/$task.md")") > "answers/$name/${task}_$run.md"
-  done
+```bash
+./run.sh bob bob --hide-intermediary-output -p            # Bob Shell
+./run.sh model-a opencode run -m myprovider/model-a       # OpenCode with one model
+
+for m in model-a model-b model-c model-d; do              # OpenCode, one result row per model
+  ./run.sh "$m" opencode run -m "myprovider/$m"
 done
+
+RUNS=3 ./run.sh bob bob --hide-intermediary-output -p     # fewer runs, to save tokens
 python3 score.py answers
 ```
 
 - **Bob Shell:** `-p` needs API-key authentication, and the license must be accepted once
   (`bob --accept-license -p "hi"`). Leave out `--yolo`: without it Bob can't write files, so the code comes
   back in the reply, which is what gets scored.
-- **OpenCode:** `-m` can point at your own models too, so you can score plain models and agents on the same
-  footing. Check `opencode run --help`, because the flags differ between versions.
+- **OpenCode:** `-m` takes a `provider/model` ID, and `opencode models` lists the ones you have configured.
+  To test your own models, add their endpoint as a provider in OpenCode's config. Flags differ between
+  versions, so check `opencode run --help`.
 - An agent's system prompt adds tokens to every call, so expect more usage than in a plain chat. If the budget
   is tight, 3 runs per task still show the differences.
 
