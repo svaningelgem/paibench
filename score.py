@@ -23,6 +23,9 @@ from typing import IO
 
 HERE = Path(__file__).resolve().parent
 TASKS = sorted(p.stem for p in (HERE / "cases").glob("*.py"))
+# TASKS="calc ring" in the environment scores only those tasks, as run.sh runs only those
+if (wanted := os.environ.get("TASKS", "").split()) and wanted != ["all"]:
+    TASKS = [t for t in TASKS if t in wanted]
 # seconds per case: 10x what a right solution needs on a slow machine, far below brute force
 TIMEOUT = 10
 # what -I does, plus a fixed hash seed so an answer's set order is the same on every run

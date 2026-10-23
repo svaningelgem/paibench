@@ -73,23 +73,23 @@ Agents such as IBM Bob or OpenCode take the same tasks, with two extra rules:
 
 ### From the command line
 
-Both tools have a one-shot mode with a fresh session per call, so the runs can be scripted. `run.sh` sends
-every task to an agent command, each call in its own empty temp folder:
+Both tools have a one-shot mode with a fresh session per call, so the runs can be scripted. `bench.sh` runs the
+contest tier 3 times through either tool and prints the scores:
+
+```bash
+./bench.sh bob                                            # Bob Shell
+./bench.sh opencode myprovider/model-a myprovider/model-b # OpenCode, one result row per model
+RUNS=5 TASKS=all ./bench.sh bob                           # every task, 5 runs
+TASKS="calc ring" ./bench.sh bob                          # only these tasks
+```
+
+For other agents, `run.sh` sends every task (or the ones in `TASKS`) to any agent command, each call in its own
+empty temp folder:
 
 ```bash
 ./run.sh <name> <agent command...>   # the prompt is added as the last argument
-```
-
-```bash
-./run.sh bob bob --hide-intermediary-output -p            # Bob Shell
-./run.sh model-a opencode run -m myprovider/model-a       # OpenCode with one model
-
-for m in model-a model-b model-c model-d; do              # OpenCode, one result row per model
-  ./run.sh "$m" opencode run -m "myprovider/$m"
-done
-
-RUNS=3 ./run.sh bob bob --hide-intermediary-output -p     # fewer runs, to save tokens
-python3 score.py answers
+RUNS=3 ./run.sh bob bob --hide-intermediary-output -p     # what bench.sh does for Bob, on every task
+python3 score.py answers             # TASKS limits the table to those tasks here too
 ```
 
 - **Bob Shell:** `-p` needs API-key authentication, and the license must be accepted once
