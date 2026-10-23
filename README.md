@@ -20,11 +20,24 @@ tokens to run every task 5 times per model. Scoring needs only the Python standa
 | `avoid` | strings avoiding forbidden words, length up to 10^18: automaton plus matrix power | 21 |
 | `cipher` | a text encoding given only as examples: finding the rule | 20 |
 | `regions` | a grid transformation given only as examples: finding the rule | 14 |
+| `reveal` | fewest announced places that fix a race result, 2·10^5 runners | 22 |
+| `stall` | when to open a stall with a cooldown, arrival times up to 10^18 | 22 |
+| `peaks` | counting sequences by a three-term maximum, length up to 10^9 | 21 |
+| `erase` | shortest palindromes reachable by deletions, 10^4 range queries | 22 |
+| `conquer` | whether one town can capture a whole road network | 22 |
+| `arrows` | the best subset of 2·10^4 vectors, without trying subsets | 22 |
+| `halves` | counting cheapest coupon assignments, 5·10^4 items | 22 |
+| `shifts` | the best schedule after each of 2·10^4 changes | 22 |
+| `records` | fewest swaps to a feasible log, hidden combinatorial structure | 22 |
 
 The tasks come in tiers. The first four are easy: strong models score 100%, but they still separate weaker
 ones. `ranges` to `orderbook` add dense specs and edge cases. In `kth`, `ring` and `avoid` the small cases can
 be brute-forced, but the large ones need the right algorithm. `cipher` and `regions` describe the task only
 through examples, and the hidden cases check whether the model found the actual rule.
+
+`reveal` to `records` are contest problems, retold with new stories and adapted from AtCoder Grand Contest
+problems. Their small cases are checked against brute force, so a correct but slow solution still gets those.
+The large cases need the intended algorithm, and a slow one fails them by a wide margin.
 
 ## Usage
 
@@ -99,7 +112,8 @@ score replies you are willing to execute. Each case gets 10 s; a case that hangs
 and the remaining cases still run.
 
 Scoring is deterministic: the same answers give the same numbers on every run and every machine. The hash
-seed is fixed. The large cases are sized so that a right solution needs well under a second and brute force
-would need far longer than 10 s, so a faster or slower machine doesn't change the result. Scoring needs Python
-3.10 or newer. The last line of the output names the Python version, because an answer may use a
-standard-library feature that older versions lack; compare results scored with the same version.
+seed is fixed. The large cases are sized so that a right solution needs at most a second or two (the
+reference, in plain Python) and brute force would need far longer than 10 s, so a faster or slower machine
+doesn't change the result. Scoring needs Python 3.10 or newer. The last line of the output names the Python
+version, because an answer may use a standard-library feature that older versions lack; compare results
+scored with the same version.
