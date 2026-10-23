@@ -15,8 +15,16 @@ tokens to run every task 5 times per model. Scoring needs only the Python standa
 | `sheet` | a spreadsheet evaluator to an invented spec: errors, laziness, cycles | 58 |
 | `justify` | text justification with the familiar rules changed | 19 |
 | `orderbook` | five bugs in an order-matching function, none of them obvious | 16 |
+| `kth` | the k-th number with digit rules, k up to 10^18: counting instead of listing | 24 |
+| `ring` | a lamp ring after up to 10^18 steps: seeing the algebra behind the rule | 18 |
+| `avoid` | strings avoiding forbidden words, length up to 10^18: automaton plus matrix power | 21 |
+| `cipher` | a text encoding given only as examples: finding the rule | 20 |
+| `regions` | a grid transformation given only as examples: finding the rule | 14 |
 
-The first four are the easy tier: strong models score 100% on them, but they still separate weaker ones.
+The tasks come in tiers. The first four are easy: strong models score 100%, but they still separate weaker
+ones. `ranges` to `orderbook` add dense specs and edge cases. In `kth`, `ring` and `avoid` the small cases can
+be brute-forced, but the large ones need the right algorithm. `cipher` and `regions` describe the task only
+through examples, and the hidden cases check whether the model found the actual rule.
 
 ## Usage
 
@@ -79,15 +87,19 @@ python3 score.py answers
   versions, so check `opencode run --help`.
 - An agent's system prompt adds tokens to every call, so expect more usage than in a plain chat. If the budget
   is tight, 3 runs per task still show the differences.
+- If you switch an agent's tools off, replace its system prompt with a plain one as well. A prompt that
+  promises tools can make the model write out fake tool calls instead of the code.
 
 ## Self-check
 
 `python3 score.py reference` must show 100% everywhere.
 
-Answers run as plain Python on your machine, each in its own process with a 60 s timeout and `eval`/`exec`
-disabled. Only score replies you are willing to execute.
+Answers run as plain Python on your machine, each in its own process with `eval`/`exec` disabled. Only
+score replies you are willing to execute. Each case gets 10 s; a case that hangs or crashes fails on its own,
+and the remaining cases still run.
 
 Scoring is deterministic: the same answers give the same numbers on every run and every machine. The hash
-seed is fixed, and the timeout only stops endless loops. It needs Python 3.10 or newer. The last line of the
-output names the Python version, because an answer may use a standard-library feature that older versions
-lack; compare results scored with the same version.
+seed is fixed. The large cases are sized so that a right solution needs well under a second and brute force
+would need far longer than 10 s, so a faster or slower machine doesn't change the result. Scoring needs Python
+3.10 or newer. The last line of the output names the Python version, because an answer may use a
+standard-library feature that older versions lack; compare results scored with the same version.
