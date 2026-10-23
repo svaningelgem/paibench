@@ -8,17 +8,31 @@ import builtins
 import contextlib
 import io
 import json
+import os
+import platform
+import queue
 import re
 import runpy
 import subprocess
 import sys
+import threading
 from collections import defaultdict
 from pathlib import Path
 from statistics import mean
+from typing import IO
 
 HERE = Path(__file__).resolve().parent
 TASKS = sorted(p.stem for p in (HERE / "cases").glob("*.py"))
+# TASKS="calc ring" in the environment scores only those tasks, as run.sh runs only those
+if (wanted := os.environ.get("TASKS", "").split()) and wanted != ["all"]:
+    TASKS = [t for t in TASKS if t in wanted]
+# seconds per case: 10x what a right solution needs on a slow machine, far below brute force
 TIMEOUT = 10
+# what -I does, plus a fixed hash seed so an answer's set order is the same on every run
+CHILD_ENV = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")} | {
+    "PYTHONHASHSEED": "0",
+    "PYTHONSAFEPATH": "1",
+}
 
 
 def extract_code(text: str) -> str:
@@ -36,22 +50,24 @@ def same(got: object, want: object) -> bool:
     return got == want
 
 
-def child(task: str, answer: Path) -> None:
+def child(task: str, answer: Path, start: int) -> None:
+    """Print "loaded", then per case from `start` one JSON line: null, or why it failed."""
     cases = runpy.run_path(str(HERE / "cases" / f"{task}.py"))["CASES"]
     # eval/exec blocked so calc can't cheat; ast-walking still slips through
     safe = {k: v for k, v in vars(builtins).items() if k not in ("eval", "exec")}
     ns = {"__name__": "answer", "__builtins__": safe}
-    failed = []
+
+    def report(result: str | None) -> None:
+        print(json.dumps(result), file=sys.__stdout__, flush=True)
+
     with contextlib.redirect_stdout(io.StringIO()):
         try:
             exec(extract_code(answer.read_text()), ns)  # noqa: S102
         except BaseException as e:  # noqa: BLE001
-            print(
-                json.dumps({"score": 0, "failed": [f"<load error> {e!r}"]}),
-                file=sys.__stdout__,
-            )
+            report(f"<load error> {e!r}")
             return
-        for expr, want in cases:
+        report("loaded")
+        for expr, want in cases[start:]:
             try:
                 got = eval(expr, ns)
                 ok, detail = not is_exc(want) and same(got, want), repr(got)
@@ -60,38 +76,62 @@ def child(task: str, answer: Path) -> None:
                     is_exc(want) and isinstance(e, want),
                     f"{type(e).__name__}: {e}",
                 )
-            if not ok:
-                failed.append(
-                    f"{expr} -> {detail}, want {getattr(want, '__name__', repr(want))}"
-                )
-    print(json.dumps({"score": 1 - len(failed) / len(cases), "failed": failed}))
+            want_name = getattr(want, "__name__", repr(want))
+            report(None if ok else f"{expr} -> {detail}, want {want_name}")
+
+
+def pump(stream: IO[str], lines: queue.Queue) -> None:
+    for line in stream:
+        lines.put(line)
+    lines.put("")  # EOF, which json.loads rejects like a garbled line
 
 
 def score(task: str, answer: Path) -> dict:
-    try:
-        out = subprocess.run(
+    """A case that hangs or kills the child fails; a new child goes on after it."""
+    cases = runpy.run_path(str(HERE / "cases" / f"{task}.py"))["CASES"]
+    failed, i = [], 0
+    while i < len(cases):
+        proc = subprocess.Popen(
             [
                 sys.executable,
-                "-I",
+                "-s",
                 str(HERE / "score.py"),
                 "--child",
                 task,
                 str(answer),
+                str(i),
             ],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT,
+            env=CHILD_ENV,
             stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
         )
-        return json.loads(out.stdout.splitlines()[-1])
-    except (subprocess.TimeoutExpired, IndexError, json.JSONDecodeError):
-        return {"score": 0, "failed": ["<timeout or crash>"]}
+        lines = queue.Queue()
+        threading.Thread(target=pump, args=(proc.stdout, lines), daemon=True).start()
+        loaded = False
+        try:
+            if (first := json.loads(lines.get(timeout=TIMEOUT))) != "loaded":
+                return {"score": 0, "failed": [first]}
+            loaded = True
+            while i < len(cases):
+                if result := json.loads(lines.get(timeout=TIMEOUT)):
+                    failed.append(result)
+                i += 1
+        except (queue.Empty, json.JSONDecodeError):
+            if not loaded:
+                return {"score": 0, "failed": ["<load timeout or crash>"]}
+            failed.append(f"{cases[i][0]} -> <timeout or crash>")
+            i += 1
+        finally:
+            proc.kill()
+            proc.wait()
+    return {"score": 1 - len(failed) / len(cases), "failed": failed}
 
 
 def main() -> None:
     if sys.argv[1] == "--child":
-        child(sys.argv[2], Path(sys.argv[3]))
+        child(sys.argv[2], Path(sys.argv[3]), int(sys.argv[4]))
         return
     runs = defaultdict(list)
     for answer in sorted(Path(sys.argv[1]).glob("*/*_*")):
@@ -120,6 +160,7 @@ def main() -> None:
             + f"{mean(means):>10.0%}"
         )
     print("\ncell = avg share of test cases passed, then fully-correct runs / runs")
+    print(f"scored with Python {platform.python_version()}")
 
 
 if __name__ == "__main__":
