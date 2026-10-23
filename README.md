@@ -1,8 +1,8 @@
 # paibench
 
-A small, cheap way to compare the coding skills of LLMs. Each of the four tasks is a short prompt, and the
-reply is scored against hidden test cases. That gives a percentage instead of a pass/fail, and it costs few
-enough tokens to run every task 5 times per model. Scoring needs only the Python standard library.
+A small, cheap way to compare the coding skills of LLMs. Each task is a short prompt, and the reply is
+scored against hidden test cases. That gives a percentage instead of a pass/fail, and it costs few enough
+tokens to run every task 5 times per model. Scoring needs only the Python standard library.
 
 | Task | Measures | Cases |
 |---|---|---|
@@ -10,6 +10,13 @@ enough tokens to run every task 5 times per model. Scoring needs only the Python
 | `bugfix` | reading code, finding the bugs | 13 |
 | `calc` | parsing, precedence and associativity | 36 |
 | `semver` | precise spec knowledge, edge cases | 39 |
+| `ranges` | npm semver ranges: caret on `0.x`, partial versions, the prerelease rule | 70 |
+| `rrule` | RFC 5545 recurrence rules: calendar edge cases, `BYSETPOS`, `WKST` | 36 |
+| `sheet` | a spreadsheet evaluator to an invented spec: errors, laziness, cycles | 58 |
+| `justify` | text justification with the familiar rules changed | 19 |
+| `orderbook` | five bugs in an order-matching function, none of them obvious | 16 |
+
+The first four are the easy tier: strong models score 100% on them, but they still separate weaker ones.
 
 ## Usage
 
@@ -77,5 +84,10 @@ python3 score.py answers
 
 `python3 score.py reference` must show 100% everywhere.
 
-Answers run as plain Python on your machine, each in its own process with a 10 s timeout and `eval`/`exec`
+Answers run as plain Python on your machine, each in its own process with a 60 s timeout and `eval`/`exec`
 disabled. Only score replies you are willing to execute.
+
+Scoring is deterministic: the same answers give the same numbers on every run and every machine. The hash
+seed is fixed, and the timeout only stops endless loops. It needs Python 3.10 or newer. The last line of the
+output names the Python version, because an answer may use a standard-library feature that older versions
+lack; compare results scored with the same version.

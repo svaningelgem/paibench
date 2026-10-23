@@ -8,6 +8,8 @@ import builtins
 import contextlib
 import io
 import json
+import os
+import platform
 import re
 import runpy
 import subprocess
@@ -18,7 +20,12 @@ from statistics import mean
 
 HERE = Path(__file__).resolve().parent
 TASKS = sorted(p.stem for p in (HERE / "cases").glob("*.py"))
-TIMEOUT = 10
+TIMEOUT = 60  # only stops endless loops; set high so a slow machine scores the same
+# what -I does, plus a fixed hash seed so an answer's set order is the same on every run
+CHILD_ENV = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")} | {
+    "PYTHONHASHSEED": "0",
+    "PYTHONSAFEPATH": "1",
+}
 
 
 def extract_code(text: str) -> str:
@@ -72,12 +79,13 @@ def score(task: str, answer: Path) -> dict:
         out = subprocess.run(
             [
                 sys.executable,
-                "-I",
+                "-s",
                 str(HERE / "score.py"),
                 "--child",
                 task,
                 str(answer),
             ],
+            env=CHILD_ENV,
             check=False,
             capture_output=True,
             text=True,
@@ -120,6 +128,7 @@ def main() -> None:
             + f"{mean(means):>10.0%}"
         )
     print("\ncell = avg share of test cases passed, then fully-correct runs / runs")
+    print(f"scored with Python {platform.python_version()}")
 
 
 if __name__ == "__main__":
